@@ -206,7 +206,7 @@ exports.default = function () {
         }, {
             key: shouldRender,
             value: function value() {
-                return this.shouldrenderflag;
+                return this[shouldrenderflag];
             }
         }, {
             key: 'hackInstall',

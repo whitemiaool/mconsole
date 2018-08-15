@@ -1,15 +1,14 @@
 {
-  "name": "onlyscroll",
-  "version": "5.0.0",
+  "name": "h5debug",
+  "version": "5.2.0",
   "description": "just a mobile console",
   "main": "dist/index.js",
-  "repository": "https://github.com/whitemiaool/only-scroll.git",
+  "repository": "https://github.com/whitemiaool/mconsole",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
-    "react",
-    "scroll"
+"mobile debug"
   ],
   "author": "dyxuan",
   "license": "MIT",

@@ -205,7 +205,7 @@ class logToHtml {
         }
     }
     [shouldRender]() {
-        return this.shouldrenderflag
+        return this[shouldrenderflag]
     }
     hackInstall() {
         if(this[hasRenderConsoleFlag]) return
