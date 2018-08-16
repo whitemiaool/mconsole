@@ -6,10 +6,17 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
+function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
+
+function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
+
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 exports.default = function () {
     var logProto = console.log;
+    var errProto = console.error;
+    var promisePro = Promise.prototype.catch;
+    // let ObjProto              = Object.prototype.toString
     var objcount = 0;
     var instance = null;
     var initId = Symbol();
@@ -20,26 +27,184 @@ exports.default = function () {
     var initLog = Symbol();
     var shouldRender = Symbol();
     var renderEvent = Symbol();
-    var renderHtml = Symbol();
-    var renderSpace = Symbol();
-    var renderObj = Symbol();
-    var render = Symbol();
+    var appendRenderStrToBody = Symbol();
+    var getSpaceStr = Symbol();
+    var getObjStr = Symbol();
+    var getRenderStr = Symbol();
     var updateBuffer = Symbol();
     var shouldrenderflag = Symbol();
     var hasRenderConsoleFlag = Symbol();
     var logarr = Symbol();
+    var rootEleSelector = Symbol();
+    var renderRootErr = Symbol();
+    var windowOnError = Symbol();
 
-    var logToHtml = function () {
+    var Net = function () {
+        function Net() {
+            _classCallCheck(this, Net);
+
+            this.initNet();
+        }
+
+        _createClass(Net, [{
+            key: 'initNet',
+            value: function initNet() {
+                this.ajaxPolyfill();
+                this.rewriteAjax();
+                this.initNetEvent();
+            }
+        }, {
+            key: 'ajaxPolyfill',
+            value: function ajaxPolyfill() {
+                if (typeof window.self.CustomEvent === "function") return false;
+                function CustomEvent(event, params) {
+                    params = params || { bubbles: false, cancelable: false, detail: undefined };
+                    var evt = document.createEvent('CustomEvent');
+                    evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
+                    return evt;
+                }
+                CustomEvent.prototype = window.self.Event.prototype;
+                window.self.CustomEvent = CustomEvent;
+            }
+        }, {
+            key: 'rewriteAjax',
+            value: function rewriteAjax() {
+                // copy from aliyun blog
+                function ajaxEventTrigger(event) {
+                    var ajaxEvent = new CustomEvent(event, { detail: this });
+                    window.self.dispatchEvent(ajaxEvent);
+                }
+                var oldXHR = window.self.XMLHttpRequest;
+
+                function newXHR() {
+                    var realXHR = new oldXHR();
+                    realXHR.addEventListener('abort', function () {
+                        ajaxEventTrigger.call(this, 'ajaxAbort');
+                    }, false);
+                    realXHR.addEventListener('error', function () {
+                        ajaxEventTrigger.call(this, 'ajaxError');
+                    }, false);
+                    realXHR.addEventListener('load', function () {
+                        ajaxEventTrigger.call(this, 'ajaxLoad');
+                    }, false);
+                    realXHR.addEventListener('loadstart', function () {
+                        ajaxEventTrigger.call(this, 'ajaxLoadStart');
+                    }, false);
+                    realXHR.addEventListener('progress', function () {
+                        ajaxEventTrigger.call(this, 'ajaxProgress');
+                    }, false);
+                    realXHR.addEventListener('timeout', function () {
+                        ajaxEventTrigger.call(this, 'ajaxTimeout');
+                    }, false);
+                    realXHR.addEventListener('loadend', function () {
+                        ajaxEventTrigger.call(this, 'ajaxLoadEnd');
+                    }, false);
+                    realXHR.addEventListener('readystatechange', function () {
+                        ajaxEventTrigger.call(this, 'ajaxReadyStateChange');
+                    }, false);
+                    return realXHR;
+                }
+                window.self.XMLHttpRequest = newXHR;
+            }
+        }, {
+            key: 'initNetEvent',
+            value: function initNetEvent() {
+                var that = this;
+                window.self.addEventListener('ajaxReadyStateChange', function (e) {
+                    if (e.detail.readyState === 4) {
+                        var res = { read: e.detail.readyState, url: e.detail.responseURL, status: e.detail.status, response: that.dealHtml(e.detail.responseText) };
+                        if (that[shouldRender]()) {
+                            that.renderNet(res);
+                        } else {
+                            that.netarr.unshift(res);
+                            that.netarr.length = 50;
+                        }
+                    }
+                });
+                window.self.addEventListener('ajaxAbort', function (e) {
+                    // console.warn('eeeeee',e.detail.responseText); // XHR 返回的内容
+                });
+                // window.self.addEventListener('ajaxLoad', function (e) {
+                //     console.warn('eeeeee',e); // XHR 返回的内容
+                // });
+            }
+        }]);
+
+        return Net;
+    }();
+
+    var logToHtml = function (_Net) {
+        _inherits(logToHtml, _Net);
+
         function logToHtml() {
             _classCallCheck(this, logToHtml);
 
-            this[logarr] = [];
-            this[shouldrenderflag] = false;
-            this[hasRenderConsoleFlag] = false;
-            this[initLog]();
+            var _this = _possibleConstructorReturn(this, (logToHtml.__proto__ || Object.getPrototypeOf(logToHtml)).call(this));
+
+            _this[logarr] = [];
+            _this.netarr = [];
+            _this[shouldrenderflag] = false;
+            _this[hasRenderConsoleFlag] = false;
+            _this[rootEleSelector] = '#root';
+            _this.initPromiseCatch();
+            _this[initLog]();
+            _this[windowOnError]();
+            return _this;
         }
 
         _createClass(logToHtml, [{
+            key: windowOnError,
+            value: function value() {
+                var that = this;
+                window.addEventListener('unhandledrejection', function (e) {
+                    console.log(e);
+                });
+                // let that = this;
+                window.addEventListener('error', function (e) {
+                    that[renderRootErr](e);
+                });
+            }
+        }, {
+            key: 'initPromiseCatch',
+            value: function initPromiseCatch() {
+                Promise.prototype.catch = function (fn) {
+                    function inner(r) {
+                        console.log('catch', r);
+                    }
+                    promisePro.call(this, inner);
+                    promisePro.call(this, fn);
+                };
+            }
+        }, {
+            key: 'dealHtml',
+            value: function dealHtml(h) {
+                return h.replace(/<|>/g, function (e) {
+                    return e == '<' ? '&lt' : '&gt';
+                });
+            }
+        }, {
+            key: 'setRootEleSelector',
+            value: function setRootEleSelector(id) {
+                this[rootEleSelector] = id;
+            }
+        }, {
+            key: 'sayNoWTF',
+            value: function sayNoWTF() {}
+        }, {
+            key: renderRootErr,
+            value: function value(e) {
+                console.log(e);
+                var that = this;
+                if (!document.querySelector(this[rootEleSelector])) return;
+                setTimeout(function () {
+                    if (document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
+                        var div = document.createElement('div');
+                        div.innerHTML = 'info:<br>' + e.filename + '<br>msg:' + e.message + '<br><br>';
+                        document.body.insertBefore(div, document.querySelector(that[rootEleSelector]));
+                    }
+                }, 1000);
+            }
+        }, {
             key: initId,
             value: function value() {
                 var s4 = function s4() {
@@ -52,9 +217,8 @@ exports.default = function () {
             value: function value() {
                 var div = document.createElement('div');
                 div.setAttribute('id', this.wrapId);
-                div.innerHTML = '\n            <div id="' + this.toolbarId + '">\n                <div data-type="1" style="background:#fff" id="' + this.logId + '">Log</div>\n                <div data-type="2" id="' + this.netId + '">Net</div>\n            </div>\n            <div id="' + this.logId + 'id"></div>\n            <div id="' + this.netId + 'id"></div>\n            <div id="' + this.clearId + '">clear</div>                     \n        ';
+                div.innerHTML = '\n                <div id="' + this.toolbarId + '">\n                    <div data-type="1" style="background:#fff" id="' + this.logId + '">Log</div>\n                    <div data-type="2" id="' + this.netId + '">Net</div>\n                </div>\n                <div id="' + this.logId + 'id"></div>\n                <div id="' + this.netId + 'id"></div>\n                <div id="' + this.clearId + '">clear</div>                     \n            ';
                 document.body.appendChild(div);
-
                 var div1 = document.createElement('div');
                 div1.setAttribute('id', this.buttonId);
                 div1.innerHTML = 'dConsole';
@@ -64,7 +228,7 @@ exports.default = function () {
             key: initCss,
             value: function value() {
                 var style = document.createElement('style');
-                style.innerHTML = 'div#' + this.wrapId + ' {\n            position: fixed;\n            height: 75vh;\n            width: 100vw;\n            overflow-y:scroll;\n            background:rgb(218, 218, 218);\n            overflow-x: hidden;\n            bottom: 0px;\n            box-sizing: border-box;\n            padding: 30px 3px;\n            display: flex;\n            flex-direction: column;\n            overflow: hidden;\n        }\n        #' + this.toolbarId + ' {\n            display: flex;\n            position: absolute;\n            justify-content: space-around;\n            width: 100%;\n            top:0px;\n            height:30px;\n            line-height:30px;\n            left:0px;\n            background:#f3f3f3;\n            border-bottom: 1px solid #ccc;\n        }\n        #' + this.toolbarId + '>div {\n            width:50%;\n            text-align:center;\n            border-left: 1px solid #ccc;\n        }\n        #' + this.logId + 'id {\n            overflow:auto;\n        }\n        div#' + this.logId + 'id>div{\n            background: #fff;\n            border-top: 1px solid #ccc;\n            padding: 5px 3px;\n            word-break: break-all;\n        }\n        div#' + this.buttonId + '{\n            border-radius: 5px;\n            position: fixed;\n            left: 14px;\n            top:50%;\n            background: #1abd10;\n            padding: 5px 10px;\n            color: #fff;\n            box-shadow: 0px 0px 7px 3px rgba(204, 204, 204,0.5);\n        }\n        #' + this.clearId + ' {\n            height: 30px;\n            text-align: center;\n            background: #f3f3f3;\n            position: absolute;\n            bottom: 0px;\n            width: 100%;\n            left: 0px;\n            line-height: 30px;\n            border-top: 1px solid #ccc;\n        }\n        ';
+                style.innerHTML = 'div#' + this.wrapId + ' {\n                position: fixed;\n                height: 75vh;\n                width: 100vw;\n                overflow-y:scroll;\n                background:rgb(218, 218, 218);\n                overflow-x: hidden;\n                bottom: 0px;\n                box-sizing: border-box;\n                padding: 30px 3px;\n                display: flex;\n                flex-direction: column;\n                overflow: hidden;\n                z-index:999;\n            }\n            #' + this.toolbarId + ' {\n                display: flex;\n                position: absolute;\n                justify-content: space-around;\n                width: 100%;\n                top:0px;\n                height:30px;\n                line-height:30px;\n                left:0px;\n                background:#f3f3f3;\n                border-bottom: 1px solid #ccc;\n            }\n            #' + this.toolbarId + '>div {\n                width:50%;\n                text-align:center;\n                border-left: 1px solid #ccc;\n            }\n            #' + this.logId + 'id,#' + this.netId + 'id {\n                overflow:auto;\n            }\n            #' + this.netId + 'id {\n                display:none\n            }\n            div#' + this.logId + 'id>div,div#' + this.netId + 'id>div{\n                background: #fff;\n                border-top: 1px solid #ccc;\n                padding: 5px 3px;\n                word-break: break-all;\n                min-height:19px;\n            }\n            div#' + this.buttonId + '{\n                border-radius: 5px;\n                position: fixed;\n                left: 14px;\n                top:50%;\n                background: #1abd10;\n                padding: 5px 10px;\n                color: #fff;\n                z-index:9999;\n                box-shadow: 0px 0px 7px 3px rgba(204, 204, 204,0.5);\n            }\n            #' + this.clearId + ' {\n                height: 30px;\n                text-align: center;\n                background: #f3f3f3;\n                position: absolute;\n                bottom: 0px;\n                width: 100%;\n                left: 0px;\n                line-height: 30px;\n                border-top: 1px solid #ccc;\n            }\n            div#' + this.netId + 'id h5,div#' + this.logId + 'id h5 {\n                margin: 0px;\n                color: blue;\n                margin-bottom: 5px;\n                display: inline-block;\n            }\n            .c_p_obj {\n                background: #e6ebff;\n                border-radius: 5px;\n            }\n            .c_p_obj b{\n                color: #0000ff;\n                font-weight: 400;\n            }\n            .c_e_obj {\n                background: #e4cece;\n                border-radius: 5px;\n            }\n            .c_e_obj b{\n                color: red;\n                font-weight: 400;\n            }\n            ';
                 document.head.appendChild(style);
             }
         }, {
@@ -81,6 +245,7 @@ exports.default = function () {
                 this[initHtml]();
                 this[initEvent]();
                 this.content = document.getElementById(this.logId + 'id');
+                this.netcontent = document.getElementById(this.netId + 'id');
                 this.wrap = document.getElementById(this.wrapId);
                 this.button = document.getElementById(this.buttonId);
             }
@@ -93,24 +258,34 @@ exports.default = function () {
         }, {
             key: initEvent,
             value: function value() {
-                var _this = this;
+                var _this2 = this;
 
+                function showObj(e) {
+                    if (e.target.nodeName == 'H5') {
+                        var target = e.target.parentNode.querySelector('div');
+                        if (!target) return;
+                        var display = target.style.display;
+                        var value = target.previousSibling.textContent;
+                        value = value.slice(1);
+                        target.previousSibling.textContent = display == 'none' ? '▼' + value : '▶' + value;
+                        target.style.display = display == 'none' ? 'block' : 'none';
+                    }
+                }
                 // 内容区域
                 var content = document.getElementById(this.logId + 'id');
                 content.addEventListener('click', function (e) {
-                    if (e.target.hasAttribute('data-obj')) {
-                        var target = e.target.querySelector('div');
-                        if (!target) return;
-                        var display = target.style.display;
-                        e.target.firstChild.nodeValue = display == 'none' ? '▼Object' : '▶Object';
-                        target.style.display = display == 'none' ? 'block' : 'none';
-                    }
+                    showObj(e);
+                });
+
+                var netcontent = document.getElementById(this.netId + 'id');
+                netcontent.addEventListener('click', function (e) {
+                    showObj(e);
                 });
 
                 // 显示隐藏按钮
                 var bt = document.getElementById(this.buttonId);
                 bt.addEventListener('click', function (e) {
-                    _this.wrap.style.display = _this.wrap.style.display == 'none' ? 'flex' : 'none';
+                    _this2.wrap.style.display = _this2.wrap.style.display == 'none' ? 'flex' : 'none';
                 }, false);
                 bt.addEventListener('touchmove', function (event) {
                     if (event.targetTouches.length == 1) {
@@ -123,7 +298,7 @@ exports.default = function () {
                 // 清除log
                 var clear = document.getElementById(this.clearId);
                 clear.addEventListener('click', function (e) {
-                    _this.content.innerHTML = '';
+                    _this2.content.innerHTML = '';
                 }, false);
 
                 // Toolbar
@@ -171,37 +346,59 @@ exports.default = function () {
             value: function value() {
                 var that = this;
                 console.log = function () {
-                    that[updateBuffer](arguments);
                     var args = [].slice.call(arguments);
                     if (that[shouldRender]()) {
-                        var _iteratorNormalCompletion2 = true;
-                        var _didIteratorError2 = false;
-                        var _iteratorError2 = undefined;
-
-                        try {
-                            for (var _iterator2 = arguments[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                                var item = _step2.value;
-
-                                if (/color:/.test(item)) continue;
-                                that[render](item);
-                            }
-                        } catch (err) {
-                            _didIteratorError2 = true;
-                            _iteratorError2 = err;
-                        } finally {
-                            try {
-                                if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                                    _iterator2.return();
-                                }
-                            } finally {
-                                if (_didIteratorError2) {
-                                    throw _iteratorError2;
-                                }
-                            }
-                        }
+                        that.appendOneToBody(arguments);
+                    } else {
+                        that[updateBuffer](arguments);
                     }
                     logProto.apply(null, args);
                 };
+                console.error = function (e) {
+                    var args = [].slice.call(arguments);
+                    that[updateBuffer](arguments);
+                    if (!document.querySelector(that[rootEleSelector])) return;
+                    setTimeout(function () {
+                        if (document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
+                            var div = document.createElement('div');
+                            div.innerHTML = 'info:<br>' + args[0].replace(/\sin\s/g, '<br>&nbsp;&nbsp;in&nbsp;&nbsp;') + '<br><br>';
+                            document.body.insertBefore(div, document.querySelector(that[rootEleSelector]));
+                        }
+                    }, 1000);
+                    errProto.apply(args);
+                };
+            }
+        }, {
+            key: 'appendOneToBody',
+            value: function appendOneToBody(item) {
+                var str = '';
+                var _iteratorNormalCompletion2 = true;
+                var _didIteratorError2 = false;
+                var _iteratorError2 = undefined;
+
+                try {
+                    for (var _iterator2 = item[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+                        var one = _step2.value;
+
+                        if (typeof one == 'string' && /color:/.test(one)) continue;
+                        str += (item.length == 1 ? '' : this[getSpaceStr](2)) + ' ' + this[getRenderStr](one);
+                    }
+                } catch (err) {
+                    _didIteratorError2 = true;
+                    _iteratorError2 = err;
+                } finally {
+                    try {
+                        if (!_iteratorNormalCompletion2 && _iterator2.return) {
+                            _iterator2.return();
+                        }
+                    } finally {
+                        if (_didIteratorError2) {
+                            throw _iteratorError2;
+                        }
+                    }
+                }
+
+                this[appendRenderStrToBody](this.content, str);
             }
         }, {
             key: shouldRender,
@@ -211,65 +408,69 @@ exports.default = function () {
         }, {
             key: 'hackInstall',
             value: function hackInstall() {
-                var _this2 = this;
+                var _this3 = this;
 
                 if (this[hasRenderConsoleFlag]) return;
                 this[hasRenderConsoleFlag] = true;
                 this[shouldrenderflag] = true;
                 this[init]();
+                this.netarr.reverse().map(function (item, i) {
+                    _this3.renderNet(item);
+                });
                 this[logarr].reverse().map(function (item, i) {
-                    var _iteratorNormalCompletion3 = true;
-                    var _didIteratorError3 = false;
-                    var _iteratorError3 = undefined;
-
-                    try {
-                        for (var _iterator3 = item[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-                            var one = _step3.value;
-
-                            if (/color:/.test(one)) continue;
-                            _this2[render](one);
-                        }
-                    } catch (err) {
-                        _didIteratorError3 = true;
-                        _iteratorError3 = err;
-                    } finally {
-                        try {
-                            if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                                _iterator3.return();
-                            }
-                        } finally {
-                            if (_didIteratorError3) {
-                                throw _iteratorError3;
-                            }
-                        }
-                    }
+                    _this3.appendOneToBody(item);
                 });
             }
         }, {
-            key: render,
+            key: 'renderNet',
+            value: function renderNet(msg) {
+                this[appendRenderStrToBody](this.netcontent, '<h5>\u25B6' + msg.url + ' ' + msg.status + '</h5><div style="display:none">' + this[getObjStr](msg) + '</div>', true);
+            }
+        }, {
+            key: getRenderStr,
             value: function value(msg) {
-                if (msg instanceof Event) {
+                if (msg instanceof MouseEvent) {
+                    this[renderEvent](msg);
+                } else if (msg instanceof ErrorEvent) {
+                    objcount = 0;
+                    var stack = msg.error.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;');
+                    return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ filename: msg.filename, msg: msg.message, stack: stack }) + '<br>&nbsp;</div>';
+                } else if (msg instanceof PromiseRejectionEvent) {
+                    objcount = 0;
+                    var _stack = msg.reason.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;');
+                    return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ msg: msg.reason.message, stack: _stack }) + '<br>&nbsp;</div>';
+                } else if (msg instanceof Error) {
+                    objcount = 0;
+                    var _stack2 = msg.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;');
+                    return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ filename: msg.filename, msg: msg.message, stack: _stack2 }) + '<br>&nbsp;</div>';
+                } else if (msg instanceof Event) {
                     this[renderEvent](msg);
                 } else if (Object.prototype.toString.call(msg) === '[object Object]') {
-                    this[renderHtml]('▶Object<div style="display:none">' + this[renderObj](msg) + '</div>', true);
                     objcount = 0;
+                    return '<h5>\u25B6Object</h5><div class="c_p_obj" style="display:none">{<br> ' + this[getObjStr](msg) + ' <br>}&nbsp;</div>';
+                } else if (Object.prototype.toString.call(msg) === '[object Array]') {
+                    objcount = 0;
+                    return '<h5>\u25B6Array</h5><div class="c_p_obj" style="display:none">[<br> ' + this[getObjStr](msg) + ' <br>]&nbsp;</div>';
                 } else {
+                    if (typeof msg === 'undefined' || msg === null) {
+                        return '<i style="color:#909090">' + JSON.stringify(msg) + '</i>';
+                    }
                     msg = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                    msg = msg.replace(/%c.+?%c/g, '');
-                    this[renderHtml](msg);
+                    msg = msg && msg.replace(/%c.+?%c/g, '');
+                    return msg;
                 }
             }
         }, {
-            key: renderObj,
+            key: getObjStr,
             value: function value(obj, flag) {
                 var res = [];
+                var space = this[getSpaceStr](flag ? objcount * 4 + 2 : 2);
                 objcount++;
-                var space = this[renderSpace](flag ? objcount * 2 : 1);
                 for (var item in obj) {
-                    var str = '' + space + item + ':';
+                    var str = space + '<b>' + item + ':</b>&nbsp;';
                     if (Object.prototype.toString.call(obj[item]) === '[object Object]') {
                         str += '{<br>';
-                        str += '' + this[renderObj](obj[item], true);
+                        str += '' + this[getObjStr](obj[item], true);
                         str += '<br>' + space + '},';
                         res.push(str);
                         continue;
@@ -277,11 +478,11 @@ exports.default = function () {
                     str = '' + str + obj[item] + ',';
                     res.push(str);
                 }
-                objcount = 0;
+                objcount = 1;
                 return res.join('<br>');
             }
         }, {
-            key: renderSpace,
+            key: getSpaceStr,
             value: function value(i) {
                 var str = [];
                 while (i--) {
@@ -290,34 +491,33 @@ exports.default = function () {
                 return str.join('');
             }
         }, {
-            key: renderHtml,
-            value: function value(html, isObj) {
+            key: appendRenderStrToBody,
+            value: function value(ele, html, isObj) {
                 var div = document.createElement('div');
                 if (isObj) {
                     div.setAttribute('data-obj', '1');
                 }
                 div.innerHTML = html;
-                this.content.appendChild(div);
+                ele.appendChild(div);
             }
         }, {
             key: renderEvent,
             value: function value(e) {
                 var res = ['{'];
                 for (var item in e) {
-                    var str = '&nbsp;&nbsp;' + item + ':' + e[item] + ',';
+                    var str = '&nbsp;&nbsp;' + item + ':&nbsp;' + e[item] + ',';
                     res.push(str);
                 }
                 res.push('}');
-                this.renderHtml('▶Object<div style="display:none">' + res.join('<br>') + '</div>', true);
+                this[appendRenderStrToBody](this.content, '<h5>▶Object</h5><div class="c_p_obj" style="display:none">' + res.join('<br>') + '</div>', true);
             }
         }]);
 
         return logToHtml;
-    }();
+    }(Net);
 
-    if (instance) {
-        return instance;
-    } else {
-        return instance = new logToHtml();
+    if (!instance) {
+        instance = new logToHtml();
     }
+    return instance;
 }();
