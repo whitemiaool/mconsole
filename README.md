@@ -19,9 +19,10 @@ If you want to open the history log information or the wrong stack in your m app
 ```
 Hdebug.hackInstall()
 ```
+## NET
+add net sniffer,you can get ajax log
 ## TODO
 1、test
-2、net sniffer
 
 ## DEMO
 ![eg1](https://raw.githubusercontent.com/whitemiaool/mconsole/master/doc/TimLine%E5%9B%BE%E7%89%8720180815155411.png)
