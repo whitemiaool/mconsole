@@ -6,10 +6,6 @@ Object.defineProperty(exports, "__esModule", {
 
 var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
 
-function _possibleConstructorReturn(self, call) { if (!self) { throw new ReferenceError("this hasn't been initialised - super() hasn't been called"); } return call && (typeof call === "object" || typeof call === "function") ? call : self; }
-
-function _inherits(subClass, superClass) { if (typeof superClass !== "function" && superClass !== null) { throw new TypeError("Super expression must either be null or a function, not " + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
-
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
 
 exports.default = function () {
@@ -39,117 +35,18 @@ exports.default = function () {
     var renderRootErr = Symbol();
     var windowOnError = Symbol();
 
-    var Net = function () {
-        function Net() {
-            _classCallCheck(this, Net);
-
-            this.initNet();
-        }
-
-        _createClass(Net, [{
-            key: 'initNet',
-            value: function initNet() {
-                this.ajaxPolyfill();
-                this.rewriteAjax();
-                this.initNetEvent();
-            }
-        }, {
-            key: 'ajaxPolyfill',
-            value: function ajaxPolyfill() {
-                if (typeof window.self.CustomEvent === "function") return false;
-                function CustomEvent(event, params) {
-                    params = params || { bubbles: false, cancelable: false, detail: undefined };
-                    var evt = document.createEvent('CustomEvent');
-                    evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
-                    return evt;
-                }
-                CustomEvent.prototype = window.self.Event.prototype;
-                window.self.CustomEvent = CustomEvent;
-            }
-        }, {
-            key: 'rewriteAjax',
-            value: function rewriteAjax() {
-                // copy from aliyun blog
-                function ajaxEventTrigger(event) {
-                    var ajaxEvent = new CustomEvent(event, { detail: this });
-                    window.self.dispatchEvent(ajaxEvent);
-                }
-                var oldXHR = window.self.XMLHttpRequest;
-
-                function newXHR() {
-                    var realXHR = new oldXHR();
-                    realXHR.addEventListener('abort', function () {
-                        ajaxEventTrigger.call(this, 'ajaxAbort');
-                    }, false);
-                    realXHR.addEventListener('error', function () {
-                        ajaxEventTrigger.call(this, 'ajaxError');
-                    }, false);
-                    realXHR.addEventListener('load', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoad');
-                    }, false);
-                    realXHR.addEventListener('loadstart', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoadStart');
-                    }, false);
-                    realXHR.addEventListener('progress', function () {
-                        ajaxEventTrigger.call(this, 'ajaxProgress');
-                    }, false);
-                    realXHR.addEventListener('timeout', function () {
-                        ajaxEventTrigger.call(this, 'ajaxTimeout');
-                    }, false);
-                    realXHR.addEventListener('loadend', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoadEnd');
-                    }, false);
-                    realXHR.addEventListener('readystatechange', function () {
-                        ajaxEventTrigger.call(this, 'ajaxReadyStateChange');
-                    }, false);
-                    return realXHR;
-                }
-                window.self.XMLHttpRequest = newXHR;
-            }
-        }, {
-            key: 'initNetEvent',
-            value: function initNetEvent() {
-                var that = this;
-                window.self.addEventListener('ajaxReadyStateChange', function (e) {
-                    if (e.detail.readyState === 4) {
-                        var res = { read: e.detail.readyState, url: e.detail.responseURL, status: e.detail.status, response: that.dealHtml(e.detail.responseText) };
-                        if (that[shouldRender]()) {
-                            that.renderNet(res);
-                        } else {
-                            that.netarr.unshift(res);
-                            that.netarr.length = 50;
-                        }
-                    }
-                });
-                window.self.addEventListener('ajaxAbort', function (e) {
-                    // console.warn('eeeeee',e.detail.responseText); // XHR 返回的内容
-                });
-                // window.self.addEventListener('ajaxLoad', function (e) {
-                //     console.warn('eeeeee',e); // XHR 返回的内容
-                // });
-            }
-        }]);
-
-        return Net;
-    }();
-
-    var logToHtml = function (_Net) {
-        _inherits(logToHtml, _Net);
-
+    var logToHtml = function () {
         function logToHtml() {
             _classCallCheck(this, logToHtml);
 
-            var _this = _possibleConstructorReturn(this, (logToHtml.__proto__ || Object.getPrototypeOf(logToHtml)).call(this));
-
-            _this[logarr] = [];
-            _this.netarr = [];
-            _this[shouldrenderflag] = false;
-            _this[hasRenderConsoleFlag] = false;
-            _this[rootEleSelector] = '#root';
-            _this.initPromiseCatch();
-            _this[initLog]();
-            _this[windowOnError]();
-            return _this;
+            this[logarr] = [];
+            this.netarr = [];
+            this[shouldrenderflag] = false;
+            this[hasRenderConsoleFlag] = false;
+            this[rootEleSelector] = '#root';
+            this.initPromiseCatch();
+            this[initLog]();
+            this[windowOnError]();
         }
 
         _createClass(logToHtml, [{
@@ -258,7 +155,7 @@ exports.default = function () {
         }, {
             key: initEvent,
             value: function value() {
-                var _this2 = this;
+                var _this = this;
 
                 function showObj(e) {
                     if (e.target.nodeName == 'H5') {
@@ -285,7 +182,7 @@ exports.default = function () {
                 // 显示隐藏按钮
                 var bt = document.getElementById(this.buttonId);
                 bt.addEventListener('click', function (e) {
-                    _this2.wrap.style.display = _this2.wrap.style.display == 'none' ? 'flex' : 'none';
+                    _this.wrap.style.display = _this.wrap.style.display == 'none' ? 'flex' : 'none';
                 }, false);
                 bt.addEventListener('touchmove', function (event) {
                     if (event.targetTouches.length == 1) {
@@ -298,7 +195,7 @@ exports.default = function () {
                 // 清除log
                 var clear = document.getElementById(this.clearId);
                 clear.addEventListener('click', function (e) {
-                    _this2.content.innerHTML = '';
+                    _this.content.innerHTML = '';
                 }, false);
 
                 // Toolbar
@@ -408,17 +305,17 @@ exports.default = function () {
         }, {
             key: 'hackInstall',
             value: function hackInstall() {
-                var _this3 = this;
+                var _this2 = this;
 
                 if (this[hasRenderConsoleFlag]) return;
                 this[hasRenderConsoleFlag] = true;
                 this[shouldrenderflag] = true;
                 this[init]();
                 this.netarr.reverse().map(function (item, i) {
-                    _this3.renderNet(item);
+                    _this2.renderNet(item);
                 });
                 this[logarr].reverse().map(function (item, i) {
-                    _this3.appendOneToBody(item);
+                    _this2.appendOneToBody(item);
                 });
             }
         }, {
@@ -514,7 +411,7 @@ exports.default = function () {
         }]);
 
         return logToHtml;
-    }(Net);
+    }();
 
     if (!instance) {
         instance = new logToHtml();
