@@ -1,4 +1,4 @@
-## Intriduction
+## Introduction
    First of all, in order to solve the problem of difficult debugging on the mobile terminal, sometimes we do not need powerful and complicated debugging tools like Winner (and the deployment environment is time-consuming and laborious), maybe we just need a buffer to record the current stack when the page is running incorrectly,also,developers have good hack portals that can open these error messages without affecting the rendering performance of the page. Or when the mobile phone page opens, the sudden white screen lets you say WTF-1 .
   If you happen to have this need, congratulations, you get it!
 This repository is an npm package that rewrites the browser console.log method. It is very small, only a hundred lines of code, using ES6 features, easy to install and use.
