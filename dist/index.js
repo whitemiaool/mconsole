@@ -16,7 +16,6 @@ exports.default = function () {
     var logProto = console.log;
     var errProto = console.error;
     var promisePro = Promise.prototype.catch;
-    // let ObjProto              = Object.prototype.toString
     var objcount = 0;
     var instance = null;
     var initId = Symbol();
@@ -43,90 +42,204 @@ exports.default = function () {
         function Net() {
             _classCallCheck(this, Net);
 
-            this.initNet();
+            this.mockAJAX();
+            this.reqList = {};
         }
 
         _createClass(Net, [{
-            key: 'initNet',
-            value: function initNet() {
-                this.ajaxPolyfill();
-                this.rewriteAjax();
-                this.initNetEvent();
-            }
-        }, {
-            key: 'ajaxPolyfill',
-            value: function ajaxPolyfill() {
-                if (typeof window.self.CustomEvent === "function") return false;
-                function CustomEvent(event, params) {
-                    params = params || { bubbles: false, cancelable: false, detail: undefined };
-                    var evt = document.createEvent('CustomEvent');
-                    evt.initCustomEvent(event, params.bubbles, params.cancelable, params.detail);
-                    return evt;
+            key: 'mockAJAX',
+            value: function mockAJAX() {
+                var _XMLHttpRequest = window.XMLHttpRequest;
+                if (!_XMLHttpRequest) {
+                    return;
                 }
-                CustomEvent.prototype = window.self.Event.prototype;
-                window.self.CustomEvent = CustomEvent;
-            }
-        }, {
-            key: 'rewriteAjax',
-            value: function rewriteAjax() {
-                // copy from aliyun blog
-                function ajaxEventTrigger(event) {
-                    var ajaxEvent = new CustomEvent(event, { detail: this });
-                    window.self.dispatchEvent(ajaxEvent);
-                }
-                var oldXHR = window.self.XMLHttpRequest;
 
-                function newXHR() {
-                    var realXHR = new oldXHR();
-                    realXHR.addEventListener('abort', function () {
-                        ajaxEventTrigger.call(this, 'ajaxAbort');
-                    }, false);
-                    realXHR.addEventListener('error', function () {
-                        ajaxEventTrigger.call(this, 'ajaxError');
-                    }, false);
-                    realXHR.addEventListener('load', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoad');
-                    }, false);
-                    realXHR.addEventListener('loadstart', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoadStart');
-                    }, false);
-                    realXHR.addEventListener('progress', function () {
-                        ajaxEventTrigger.call(this, 'ajaxProgress');
-                    }, false);
-                    realXHR.addEventListener('timeout', function () {
-                        ajaxEventTrigger.call(this, 'ajaxTimeout');
-                    }, false);
-                    realXHR.addEventListener('loadend', function () {
-                        ajaxEventTrigger.call(this, 'ajaxLoadEnd');
-                    }, false);
-                    realXHR.addEventListener('readystatechange', function () {
-                        ajaxEventTrigger.call(this, 'ajaxReadyStateChange');
-                    }, false);
-                    return realXHR;
-                }
-                window.self.XMLHttpRequest = newXHR;
-            }
-        }, {
-            key: 'initNetEvent',
-            value: function initNetEvent() {
                 var that = this;
-                window.self.addEventListener('ajaxReadyStateChange', function (e) {
-                    if (e.detail.readyState === 4) {
-                        var res = { read: e.detail.readyState, url: e.detail.responseURL, status: e.detail.status, response: that.dealHtml(e.detail.responseText) };
-                        if (that[shouldRender]()) {
-                            that.renderNet(res);
+                var _open = window.XMLHttpRequest.prototype.open,
+                    _send = window.XMLHttpRequest.prototype.send;
+                that._open = _open;
+                that._send = _send;
+                window.XMLHttpRequest.prototype.open = function () {
+                    var XMLReq = this;
+                    var args = [].slice.call(arguments),
+                        method = args[0],
+                        url = args[1],
+                        id = that[initId]();
+                    var timer = null;
+                    // may be used by other functions
+                    XMLReq._requestID = id;
+                    XMLReq._method = method;
+                    XMLReq._url = url;
+
+                    // mock onreadystatechange
+                    var _onreadystatechange = XMLReq.onreadystatechange || function () {};
+                    var onreadystatechange = function onreadystatechange() {
+
+                        var item = that.reqList[id] || {};
+
+                        // update status
+                        item.readyState = XMLReq.readyState;
+                        item.status = 0;
+                        if (XMLReq.readyState > 1) {
+                            item.status = XMLReq.status;
+                        }
+                        item.responseType = XMLReq.responseType;
+
+                        if (XMLReq.readyState == 0) {
+                            // UNSENT
+                            if (!item.startTime) {
+                                item.startTime = +new Date();
+                            }
+                        } else if (XMLReq.readyState == 1) {
+                            // OPENED
+                            if (!item.startTime) {
+                                item.startTime = +new Date();
+                            }
+                        } else if (XMLReq.readyState == 2) {
+                            // HEADERS_RECEIVED
+                            item.header = {};
+                            var header = XMLReq.getAllResponseHeaders() || '',
+                                headerArr = header.split("\n");
+                            // extract plain text to key-value format
+                            for (var i = 0; i < headerArr.length; i++) {
+                                var line = headerArr[i];
+                                if (!line) {
+                                    continue;
+                                }
+                                var arr = line.split(': ');
+                                var key = arr[0],
+                                    value = arr.slice(1).join(': ');
+                                item.header[key] = value;
+                            }
+                        } else if (XMLReq.readyState == 3) {
+                            // LOADING
+                        } else if (XMLReq.readyState == 4) {
+                            // DONE
+                            clearInterval(timer);
+                            item.endTime = +new Date(), item.costTime = item.endTime - (item.startTime || item.endTime);
+                            item.response = XMLReq.response;
+                            if (that[shouldRender]()) {
+                                that.renderNet(item);
+                            } else {
+                                that.netarr.unshift(item);
+                                that.netarr.length = 50;
+                            }
                         } else {
-                            that.netarr.unshift(res);
-                            that.netarr.length = 50;
+                            clearInterval(timer);
+                        }
+
+                        that.updateRequest(id, item);
+                        return _onreadystatechange.apply(XMLReq, arguments);
+                    };
+                    XMLReq.onreadystatechange = onreadystatechange;
+
+                    // some 3rd libraries will change XHR's default function
+                    // so we use a timer to avoid lost tracking of readyState
+                    var preState = -1;
+                    timer = setInterval(function () {
+                        if (preState != XMLReq.readyState) {
+                            preState = XMLReq.readyState;
+                            onreadystatechange.call(XMLReq);
+                        }
+                    }, 10);
+
+                    return _open.apply(XMLReq, args);
+                };
+
+                // mock send()
+                window.XMLHttpRequest.prototype.send = function () {
+                    var XMLReq = this;
+                    var args = [].slice.call(arguments),
+                        data = args[0];
+
+                    var item = that.reqList[XMLReq._requestID] || {};
+                    item.method = XMLReq._method.toUpperCase();
+
+                    var query = XMLReq._url.split('?'); // a.php?b=c&d=?e => ['a.php', 'b=c&d=', '?e']
+                    item.url = query.shift(); // => ['b=c&d=', '?e']
+
+                    if (query.length > 0) {
+                        item.getData = {};
+                        query = query.join('?'); // => 'b=c&d=?e'
+                        query = query.split('&'); // => ['b=c', 'd=?e']
+                        var _iteratorNormalCompletion = true;
+                        var _didIteratorError = false;
+                        var _iteratorError = undefined;
+
+                        try {
+                            for (var _iterator = query[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+                                var q = _step.value;
+
+                                q = q.split('=');
+                                item.getData[q[0]] = q[1];
+                            }
+                        } catch (err) {
+                            _didIteratorError = true;
+                            _iteratorError = err;
+                        } finally {
+                            try {
+                                if (!_iteratorNormalCompletion && _iterator.return) {
+                                    _iterator.return();
+                                }
+                            } finally {
+                                if (_didIteratorError) {
+                                    throw _iteratorError;
+                                }
+                            }
                         }
                     }
-                });
-                window.self.addEventListener('ajaxAbort', function (e) {
-                    // console.warn('eeeeee',e.detail.responseText); // XHR 返回的内容
-                });
-                // window.self.addEventListener('ajaxLoad', function (e) {
-                //     console.warn('eeeeee',e); // XHR 返回的内容
-                // });
+
+                    if (item.method == 'POST') {
+
+                        // save POST data
+                        if (typeof data === 'string') {
+                            var arr = data.split('&');
+                            item.postData = {};
+                            var _iteratorNormalCompletion2 = true;
+                            var _didIteratorError2 = false;
+                            var _iteratorError2 = undefined;
+
+                            try {
+                                for (var _iterator2 = arr[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
+                                    var _q = _step2.value;
+
+                                    _q = _q.split('=');
+                                    item.postData[_q[0]] = _q[1];
+                                }
+                            } catch (err) {
+                                _didIteratorError2 = true;
+                                _iteratorError2 = err;
+                            } finally {
+                                try {
+                                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
+                                        _iterator2.return();
+                                    }
+                                } finally {
+                                    if (_didIteratorError2) {
+                                        throw _iteratorError2;
+                                    }
+                                }
+                            }
+                        } else if (Object.prototype.toString.call(data) === '[object Object]') {
+                            item.postData = data;
+                        }
+                    }
+
+                    // if (!XMLReq._noVConsole) {
+                    that.updateRequest(XMLReq._requestID, item);
+                    // }
+
+                    return _send.apply(XMLReq, args);
+                };
+            }
+        }, {
+            key: 'updateRequest',
+            value: function updateRequest(id, data) {
+                var item = this.reqList[id] || {};
+                for (var key in data) {
+                    item[key] = data[key];
+                }
+                this.reqList[id] = item;
             }
         }]);
 
@@ -145,6 +258,7 @@ exports.default = function () {
             _this.netarr = [];
             _this[shouldrenderflag] = false;
             _this[hasRenderConsoleFlag] = false;
+            _this.btmove = false;
             _this[rootEleSelector] = '#root';
             _this.initPromiseCatch();
             _this[initLog]();
@@ -156,13 +270,14 @@ exports.default = function () {
             key: windowOnError,
             value: function value() {
                 var that = this;
+
                 window.addEventListener('unhandledrejection', function (e) {
                     console.log(e);
                 });
-                // let that = this;
                 window.addEventListener('error', function (e) {
+                    e.stopPropagation();
                     that[renderRootErr](e);
-                });
+                }, false);
             }
         }, {
             key: 'initPromiseCatch',
@@ -179,7 +294,7 @@ exports.default = function () {
             key: 'dealHtml',
             value: function dealHtml(h) {
                 return h.replace(/<|>/g, function (e) {
-                    return e == '<' ? '&lt' : '&gt';
+                    return e === '<' ? '&lt' : '&gt';
                 });
             }
         }, {
@@ -188,19 +303,17 @@ exports.default = function () {
                 this[rootEleSelector] = id;
             }
         }, {
-            key: 'sayNoWTF',
-            value: function sayNoWTF() {}
-        }, {
             key: renderRootErr,
             value: function value(e) {
                 console.log(e);
-                var that = this;
                 if (!document.querySelector(this[rootEleSelector])) return;
+                var that = this;
                 setTimeout(function () {
-                    if (document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
+                    if (document.querySelector(that[rootEleSelector]).innerHTML.trim() === '') {
                         var div = document.createElement('div');
-                        div.innerHTML = 'info:<br>' + e.filename + '<br>msg:' + e.message + '<br><br>';
-                        document.body.insertBefore(div, document.querySelector(that[rootEleSelector]));
+                        var stack = e.error && e.error.stack && e.error.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;');
+                        div.innerHTML = 'info:<br>file:' + e.filename + '<br>msg:' + e.message + '<br>stack:' + stack + '<br><br>';
+                        document.body.appendChild(div);
                     }
                 }, 1000);
             }
@@ -217,7 +330,7 @@ exports.default = function () {
             value: function value() {
                 var div = document.createElement('div');
                 div.setAttribute('id', this.wrapId);
-                div.innerHTML = '\n                <div id="' + this.toolbarId + '">\n                    <div data-type="1" style="background:#fff" id="' + this.logId + '">Log</div>\n                    <div data-type="2" id="' + this.netId + '">Net</div>\n                </div>\n                <div id="' + this.logId + 'id"></div>\n                <div id="' + this.netId + 'id"></div>\n                <div id="' + this.clearId + '">clear</div>                     \n            ';
+                div.innerHTML = '\n            <div id="' + this.toolbarId + '">\n                <div data-type="1" style="background:#fff" id="' + this.logId + '">Log</div>\n                <div data-type="2" id="' + this.netId + '">Net</div>\n                </div>\n                <div id="' + this.logId + 'id"></div>\n                <div id="' + this.netId + 'id"></div>\n                <div id="' + this.clearId + '">clear</div>                     \n            ';
                 document.body.appendChild(div);
                 var div1 = document.createElement('div');
                 div1.setAttribute('id', this.buttonId);
@@ -260,15 +373,16 @@ exports.default = function () {
             value: function value() {
                 var _this2 = this;
 
+                var that = this;
                 function showObj(e) {
-                    if (e.target.nodeName == 'H5') {
+                    if (e.target.nodeName === 'H5') {
                         var target = e.target.parentNode.querySelector('div');
                         if (!target) return;
                         var display = target.style.display;
                         var value = target.previousSibling.textContent;
                         value = value.slice(1);
-                        target.previousSibling.textContent = display == 'none' ? '▼' + value : '▶' + value;
-                        target.style.display = display == 'none' ? 'block' : 'none';
+                        target.previousSibling.textContent = display === 'none' ? '▼' + value : '▶' + value;
+                        target.style.display = display === 'none' ? 'block' : 'none';
                     }
                 }
                 // 内容区域
@@ -285,8 +399,9 @@ exports.default = function () {
                 // 显示隐藏按钮
                 var bt = document.getElementById(this.buttonId);
                 bt.addEventListener('click', function (e) {
-                    _this2.wrap.style.display = _this2.wrap.style.display == 'none' ? 'flex' : 'none';
-                }, false);
+                    if (that.btmove == true) return;
+                    that.wrap.style.display = _this2.wrap.style.display === 'none' ? 'flex' : 'none';
+                });
                 bt.addEventListener('touchmove', function (event) {
                     if (event.targetTouches.length == 1) {
                         var touch = event.targetTouches[0];
@@ -309,13 +424,13 @@ exports.default = function () {
                     var parent = e.target.parentNode;
                     var childs = parent.childNodes;
                     e.target.style.background = '#fff';
-                    var _iteratorNormalCompletion = true;
-                    var _didIteratorError = false;
-                    var _iteratorError = undefined;
+                    var _iteratorNormalCompletion3 = true;
+                    var _didIteratorError3 = false;
+                    var _iteratorError3 = undefined;
 
                     try {
-                        for (var _iterator = childs[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                            var item = _step.value;
+                        for (var _iterator3 = childs[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
+                            var item = _step3.value;
 
                             if (!(item.nodeType == 1)) continue;
                             if (item.getAttribute('id') == targetId) {
@@ -326,16 +441,16 @@ exports.default = function () {
                             document.getElementById(item.getAttribute('id') + 'id').style.display = 'none';
                         }
                     } catch (err) {
-                        _didIteratorError = true;
-                        _iteratorError = err;
+                        _didIteratorError3 = true;
+                        _iteratorError3 = err;
                     } finally {
                         try {
-                            if (!_iteratorNormalCompletion && _iterator.return) {
-                                _iterator.return();
+                            if (!_iteratorNormalCompletion3 && _iterator3.return) {
+                                _iterator3.return();
                             }
                         } finally {
-                            if (_didIteratorError) {
-                                throw _iteratorError;
+                            if (_didIteratorError3) {
+                                throw _iteratorError3;
                             }
                         }
                     }
@@ -358,6 +473,7 @@ exports.default = function () {
                     var args = [].slice.call(arguments);
                     that[updateBuffer](arguments);
                     if (!document.querySelector(that[rootEleSelector])) return;
+                    errProto.apply(args);
                     setTimeout(function () {
                         if (document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
                             var div = document.createElement('div');
@@ -365,35 +481,34 @@ exports.default = function () {
                             document.body.insertBefore(div, document.querySelector(that[rootEleSelector]));
                         }
                     }, 1000);
-                    errProto.apply(args);
                 };
             }
         }, {
             key: 'appendOneToBody',
             value: function appendOneToBody(item) {
                 var str = '';
-                var _iteratorNormalCompletion2 = true;
-                var _didIteratorError2 = false;
-                var _iteratorError2 = undefined;
+                var _iteratorNormalCompletion4 = true;
+                var _didIteratorError4 = false;
+                var _iteratorError4 = undefined;
 
                 try {
-                    for (var _iterator2 = item[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                        var one = _step2.value;
+                    for (var _iterator4 = item[Symbol.iterator](), _step4; !(_iteratorNormalCompletion4 = (_step4 = _iterator4.next()).done); _iteratorNormalCompletion4 = true) {
+                        var one = _step4.value;
 
                         if (typeof one == 'string' && /color:/.test(one)) continue;
                         str += (item.length == 1 ? '' : this[getSpaceStr](2)) + ' ' + this[getRenderStr](one);
                     }
                 } catch (err) {
-                    _didIteratorError2 = true;
-                    _iteratorError2 = err;
+                    _didIteratorError4 = true;
+                    _iteratorError4 = err;
                 } finally {
                     try {
-                        if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                            _iterator2.return();
+                        if (!_iteratorNormalCompletion4 && _iterator4.return) {
+                            _iterator4.return();
                         }
                     } finally {
-                        if (_didIteratorError2) {
-                            throw _iteratorError2;
+                        if (_didIteratorError4) {
+                            throw _iteratorError4;
                         }
                     }
                 }
@@ -424,7 +539,7 @@ exports.default = function () {
         }, {
             key: 'renderNet',
             value: function renderNet(msg) {
-                this[appendRenderStrToBody](this.netcontent, '<h5>\u25B6' + msg.url + ' ' + msg.status + '</h5><div style="display:none">' + this[getObjStr](msg) + '</div>', true);
+                this[appendRenderStrToBody](this.netcontent, '<h5>\u25B6' + msg.url + ' ' + msg.status + '</h5><div class="c_n_obj" style="display:none">' + this[getObjStr](msg) + '</div>', true);
             }
         }, {
             key: getRenderStr,

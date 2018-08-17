@@ -1,145 +1,235 @@
 export default (() => {
-    let logProto              = console.log;
-    let errProto              = console.error;
+    let logProto = console.log;
+    let errProto = console.error;
     let promisePro = Promise.prototype.catch
-    // let ObjProto              = Object.prototype.toString
-    let objcount              = 0;
-    let instance              = null;
-    let initId                = Symbol();
-    let initHtml              = Symbol();
-    let initCss               = Symbol();
-    let init                  = Symbol();
-    let initEvent             = Symbol();
-    let initLog               = Symbol()
-    let shouldRender          = Symbol();
-    let renderEvent           = Symbol();
+    let objcount = 0;
+    let instance = null;
+    let initId = Symbol();
+    let initHtml = Symbol();
+    let initCss = Symbol();
+    let init = Symbol();
+    let initEvent = Symbol();
+    let initLog = Symbol()
+    let shouldRender = Symbol();
+    let renderEvent = Symbol();
     let appendRenderStrToBody = Symbol();
-    let getSpaceStr           = Symbol();
-    let getObjStr             = Symbol();
-    let getRenderStr          = Symbol();
-    let updateBuffer          = Symbol();
-    let shouldrenderflag      = Symbol();
-    let hasRenderConsoleFlag  = Symbol();
-    let logarr                = Symbol();
-    let rootEleSelector       = Symbol();
-    let renderRootErr         = Symbol();
-    let windowOnError         = Symbol();
+    let getSpaceStr = Symbol();
+    let getObjStr = Symbol();
+    let getRenderStr = Symbol();
+    let updateBuffer = Symbol();
+    let shouldrenderflag = Symbol();
+    let hasRenderConsoleFlag = Symbol();
+    let logarr = Symbol();
+    let rootEleSelector = Symbol();
+    let renderRootErr = Symbol();
+    let windowOnError = Symbol();
 
     class Net {
         constructor() {
-            this.initNet();
-        }
-        initNet() {
-            this.ajaxPolyfill();
-            this.rewriteAjax();
-            this.initNetEvent()
-        }
-        ajaxPolyfill() {
-            if ( typeof window.self.CustomEvent === "function" ) return false;
-            function CustomEvent ( event, params ) {
-                params = params || { bubbles: false, cancelable: false, detail: undefined };
-                let evt = document.createEvent( 'CustomEvent' );
-                evt.initCustomEvent( event, params.bubbles, params.cancelable, params.detail );
-                return evt;
-            }
-            CustomEvent.prototype = window.self.Event.prototype;
-            window.self.CustomEvent = CustomEvent;
+            this.mockAJAX()
+            this.reqList = {};
         }
 
-        rewriteAjax() {
-            // copy from aliyun blog
-            function ajaxEventTrigger(event) {
-                let ajaxEvent = new CustomEvent(event, { detail: this });
-                window.self.dispatchEvent(ajaxEvent);
-            }
-            let oldXHR = window.self.XMLHttpRequest;
-         
-            function newXHR() {
-                let realXHR = new oldXHR();
-                realXHR.addEventListener('abort', function () { ajaxEventTrigger.call(this, 'ajaxAbort'); }, false);
-                realXHR.addEventListener('error', function () { ajaxEventTrigger.call(this, 'ajaxError'); }, false);
-                realXHR.addEventListener('load', function () { ajaxEventTrigger.call(this, 'ajaxLoad'); }, false);
-                realXHR.addEventListener('loadstart', function () { ajaxEventTrigger.call(this, 'ajaxLoadStart'); }, false);
-                realXHR.addEventListener('progress', function () { ajaxEventTrigger.call(this, 'ajaxProgress'); }, false);        
-                realXHR.addEventListener('timeout', function () { ajaxEventTrigger.call(this, 'ajaxTimeout'); }, false);        
-                realXHR.addEventListener('loadend', function () { ajaxEventTrigger.call(this, 'ajaxLoadEnd'); }, false);       
-                realXHR.addEventListener('readystatechange', function() { ajaxEventTrigger.call(this, 'ajaxReadyStateChange'); }, false);      
-                return realXHR;
-            }
-            window.self.XMLHttpRequest = newXHR;
-        }
-        initNetEvent() {
+        mockAJAX() {
+            let _XMLHttpRequest = window.XMLHttpRequest;
+            if (!_XMLHttpRequest) { return; }
+
             let that = this;
-            window.self.addEventListener('ajaxReadyStateChange', function (e) {
-                if(e.detail.readyState === 4) {
-                    let res = {read:e.detail.readyState,url:e.detail.responseURL,status:e.detail.status,response:that.dealHtml(e.detail.responseText)}
-                    if(that[shouldRender]()) {
-                        that.renderNet(res);
-                    } else {
-                        that.netarr.unshift(res);
-                        that.netarr.length = 50;
+            let _open = window.XMLHttpRequest.prototype.open,
+                _send = window.XMLHttpRequest.prototype.send;
+            that._open = _open;
+            that._send = _send;
+            window.XMLHttpRequest.prototype.open = function () {
+                let XMLReq = this;
+                let args = [].slice.call(arguments),
+                    method = args[0],
+                    url = args[1],
+                    id = that[initId]();
+                let timer = null;
+                // may be used by other functions
+                XMLReq._requestID = id;
+                XMLReq._method = method;
+                XMLReq._url = url;
+
+                // mock onreadystatechange
+                let _onreadystatechange = XMLReq.onreadystatechange || function () { };
+                let onreadystatechange = function () {
+
+                    let item = that.reqList[id] || {};
+
+                    // update status
+                    item.readyState = XMLReq.readyState;
+                    item.status = 0;
+                    if (XMLReq.readyState > 1) {
+                        item.status = XMLReq.status;
                     }
-                }   
-            });
-            window.self.addEventListener('ajaxAbort', function (e) {
-                // console.warn('eeeeee',e.detail.responseText); // XHR 返回的内容
-            });
-            // window.self.addEventListener('ajaxLoad', function (e) {
-            //     console.warn('eeeeee',e); // XHR 返回的内容
-            // });
+                    item.responseType = XMLReq.responseType;
+
+                    if (XMLReq.readyState == 0) {
+                        // UNSENT
+                        if (!item.startTime) {
+                            item.startTime = (+new Date());
+                        }
+                    } else if (XMLReq.readyState == 1) {
+                        // OPENED
+                        if (!item.startTime) {
+                            item.startTime = (+new Date());
+                        }
+                    } else if (XMLReq.readyState == 2) {
+                        // HEADERS_RECEIVED
+                        item.header = {};
+                        let header = XMLReq.getAllResponseHeaders() || '',
+                            headerArr = header.split("\n");
+                        // extract plain text to key-value format
+                        for (let i = 0; i < headerArr.length; i++) {
+                            let line = headerArr[i];
+                            if (!line) { continue; }
+                            let arr = line.split(': ');
+                            let key = arr[0],
+                                value = arr.slice(1).join(': ');
+                            item.header[key] = value;
+                        }
+                    } else if (XMLReq.readyState == 3) {
+                        // LOADING
+                    } else if (XMLReq.readyState == 4) {
+                        // DONE
+                        clearInterval(timer);
+                        item.endTime = +new Date(),
+                            item.costTime = item.endTime - (item.startTime || item.endTime);
+                        item.response = XMLReq.response;
+                        if(that[shouldRender]()) {
+                            that.renderNet(item);
+                        } else {
+                            that.netarr.unshift(item);
+                            that.netarr.length = 50;
+                        }
+                    } else {
+                        clearInterval(timer);
+                    }
+
+                    that.updateRequest(id, item);
+                    return _onreadystatechange.apply(XMLReq, arguments);
+                };
+                XMLReq.onreadystatechange = onreadystatechange;
+
+                // some 3rd libraries will change XHR's default function
+                // so we use a timer to avoid lost tracking of readyState
+                let preState = -1;
+                timer = setInterval(function () {
+                    if (preState != XMLReq.readyState) {
+                        preState = XMLReq.readyState;
+                        onreadystatechange.call(XMLReq);
+                    }
+                }, 10);
+
+                return _open.apply(XMLReq, args);
+            };
+
+            // mock send()
+            window.XMLHttpRequest.prototype.send = function () {
+                let XMLReq = this;
+                let args = [].slice.call(arguments),
+                    data = args[0];
+
+                let item = that.reqList[XMLReq._requestID] || {};
+                item.method = XMLReq._method.toUpperCase();
+
+                let query = XMLReq._url.split('?'); // a.php?b=c&d=?e => ['a.php', 'b=c&d=', '?e']
+                item.url = query.shift(); // => ['b=c&d=', '?e']
+
+                if (query.length > 0) {
+                    item.getData = {};
+                    query = query.join('?'); // => 'b=c&d=?e'
+                    query = query.split('&'); // => ['b=c', 'd=?e']
+                    for (let q of query) {
+                        q = q.split('=');
+                        item.getData[q[0]] = q[1];
+                    }
+                }
+
+                if (item.method == 'POST') {
+
+                    // save POST data
+                    if (typeof data === 'string') {
+                        let arr = data.split('&');
+                        item.postData = {};
+                        for (let q of arr) {
+                            q = q.split('=');
+                            item.postData[q[0]] = q[1];
+                        }
+                    } else if (Object.prototype.toString.call(data) === '[object Object]') {
+                        item.postData = data;
+                    }
+
+                }
+
+                // if (!XMLReq._noVConsole) {
+                    that.updateRequest(XMLReq._requestID, item);
+                // }
+
+                return _send.apply(XMLReq, args);
+            };
+
+        }
+        updateRequest(id, data) {
+            let item = this.reqList[id] || {};
+            for (let key in data) {
+                item[key] = data[key];
+            }
+            this.reqList[id] = item;
         }
     }
-    class logToHtml extends Net{
+    class logToHtml extends Net {
         constructor() {
             super();
-            this[logarr]               = [];
-            this.netarr                = [];
-            this[shouldrenderflag]     = false;
+            this[logarr] = [];
+            this.netarr = [];
+            this[shouldrenderflag] = false;
             this[hasRenderConsoleFlag] = false;
-            this[rootEleSelector]      = '#root';
+            this.btmove = false
+            this[rootEleSelector] = '#root';
             this.initPromiseCatch();
             this[initLog]();
             this[windowOnError]();
         }
         [windowOnError]() {
             let that = this;
-            window.addEventListener('unhandledrejection', (e)=>{
+
+            window.addEventListener('unhandledrejection', (e) => {
                 console.log(e)
             });
-            // let that = this;
-            window.addEventListener('error',(e)=>{
+            window.addEventListener('error', (e) => {
+                e.stopPropagation();
                 that[renderRootErr](e);
-            })
+            }, false)
         }
         initPromiseCatch() {
-            Promise.prototype.catch = function(fn) {
+            Promise.prototype.catch = function (fn) {
                 function inner(r) {
-                    console.log('catch',r)
+                    console.log('catch', r)
                 }
-                promisePro.call(this,inner)
-                promisePro.call(this,fn)
+                promisePro.call(this, inner)
+                promisePro.call(this, fn)
             }
         }
         dealHtml(h) {
-            return h.replace(/<|>/g,(e)=>{
-                return e == '<'?'&lt':'&gt'
+            return h.replace(/<|>/g, (e) => {
+                return e === '<' ? '&lt' : '&gt'
             })
         }
         setRootEleSelector(id) {
             this[rootEleSelector] = id;
         }
-        sayNoWTF() {
-            
-        }
         [renderRootErr](e) {
             console.log(e);
+            if (!document.querySelector(this[rootEleSelector])) return
             let that = this;
-            if(!document.querySelector(this[rootEleSelector])) return
             setTimeout(() => {
-                if(document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
+                if (document.querySelector(that[rootEleSelector]).innerHTML.trim() === '') {
                     let div = document.createElement('div');
-                    div.innerHTML = `info:<br>${e.filename}<br>msg:${e.message}<br><br>`;
-                    document.body.insertBefore(div,document.querySelector(that[rootEleSelector]));
+                    let stack = e.error && e.error.stack && e.error.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;')
+                    div.innerHTML = `info:<br>file:${e.filename}<br>msg:${e.message}<br>stack:${stack}<br><br>`;
+                    document.body.appendChild(div);
                 }
             }, 1000);
         }
@@ -152,9 +242,9 @@ export default (() => {
             let div = document.createElement('div');
             div.setAttribute('id', this.wrapId);
             div.innerHTML = `
-                <div id="${this.toolbarId}">
-                    <div data-type="1" style="background:#fff" id="${this.logId}">Log</div>
-                    <div data-type="2" id="${this.netId}">Net</div>
+            <div id="${this.toolbarId}">
+                <div data-type="1" style="background:#fff" id="${this.logId}">Log</div>
+                <div data-type="2" id="${this.netId}">Net</div>
                 </div>
                 <div id="${this.logId}id"></div>
                 <div id="${this.netId}id"></div>
@@ -283,27 +373,28 @@ export default (() => {
             this[logarr].unshift(args);
             this[logarr].length = 50;
         }
-        
+
         [initEvent]() {
+            let that = this;
             function showObj(e) {
-                if(e.target.nodeName == 'H5') {
+                if (e.target.nodeName === 'H5') {
                     let target = e.target.parentNode.querySelector('div');
                     if (!target) return
                     let display = target.style.display;
                     let value = target.previousSibling.textContent;
                     value = value.slice(1);
-                    target.previousSibling.textContent = display == 'none' ? '▼'+value : '▶'+value;
-                    target.style.display = display == 'none' ? 'block' : 'none';
+                    target.previousSibling.textContent = display === 'none' ? '▼' + value : '▶' + value;
+                    target.style.display = display === 'none' ? 'block' : 'none';
                 }
             }
             // 内容区域
             let content = document.getElementById(this.logId + 'id');
-            content.addEventListener('click', (e)=>{
+            content.addEventListener('click', (e) => {
                 showObj(e)
             });
 
             let netcontent = document.getElementById(this.netId + 'id');
-            netcontent.addEventListener('click',(e)=>{
+            netcontent.addEventListener('click', (e) => {
                 showObj(e)
             })
 
@@ -311,8 +402,9 @@ export default (() => {
             // 显示隐藏按钮
             let bt = document.getElementById(this.buttonId);
             bt.addEventListener('click', (e) => {
-                this.wrap.style.display = this.wrap.style.display == 'none' ? 'flex' : 'none'
-            }, false)
+                if (that.btmove == true) return
+                that.wrap.style.display = this.wrap.style.display === 'none' ? 'flex' : 'none'
+            })
             bt.addEventListener('touchmove', function (event) {
                 if (event.targetTouches.length == 1) {
                     let touch = event.targetTouches[0];
@@ -357,27 +449,27 @@ export default (() => {
                 }
                 logProto.apply(null, args)
             }
-            console.error = function(e) {
+            console.error = function (e) {
                 let args = [].slice.call(arguments);
-                that[updateBuffer](arguments)
-                if(!document.querySelector(that[rootEleSelector])) return
-                setTimeout(() => {
-                    if(document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
-                        let div = document.createElement('div');
-                        div.innerHTML = `info:<br>${args[0].replace(/\sin\s/g,'<br>&nbsp;&nbsp;in&nbsp;&nbsp;')}<br><br>`;
-                        document.body.insertBefore(div,document.querySelector(that[rootEleSelector]));
-                    }
-                }, 1000);                
+                that[updateBuffer](arguments);
+                if (!document.querySelector(that[rootEleSelector])) return
                 errProto.apply(args)
+                setTimeout(() => {
+                    if (document.querySelector(that[rootEleSelector]).innerHTML.trim() == '') {
+                        let div = document.createElement('div');
+                        div.innerHTML = `info:<br>${args[0].replace(/\sin\s/g, '<br>&nbsp;&nbsp;in&nbsp;&nbsp;')}<br><br>`;
+                        document.body.insertBefore(div, document.querySelector(that[rootEleSelector]));
+                    }
+                }, 1000);
             }
         }
         appendOneToBody(item) {
             let str = '';
             for (let one of item) {
-                if (typeof one == 'string'&&/color:/.test(one)) continue
-                str+=`${item.length==1?'':this[getSpaceStr](2)} ${this[getRenderStr](one)}`
+                if (typeof one == 'string' && /color:/.test(one)) continue
+                str += `${item.length == 1 ? '' : this[getSpaceStr](2)} ${this[getRenderStr](one)}`
             }
-            this[appendRenderStrToBody](this.content,str)
+            this[appendRenderStrToBody](this.content, str)
         }
         [shouldRender]() {
             return this[shouldrenderflag]
@@ -396,24 +488,24 @@ export default (() => {
         }
 
         renderNet(msg) {
-            this[appendRenderStrToBody](this.netcontent,`<h5>▶${msg.url} ${msg.status}</h5><div style="display:none">${this[getObjStr](msg)}</div>`, true);
+            this[appendRenderStrToBody](this.netcontent,`<h5>▶${msg.url} ${msg.status}</h5><div class="c_n_obj" style="display:none">${this[getObjStr](msg)}</div>`, true);
         }
 
         [getRenderStr](msg) {
             if (msg instanceof MouseEvent) {
                 this[renderEvent](msg);
-            } else if(msg instanceof ErrorEvent) {
+            } else if (msg instanceof ErrorEvent) {
                 objcount = 0;
-                let stack = msg.error.stack.replace(/\sat\s/g,'<br>&nbsp;&nbsp;at&nbsp;&nbsp;')           
-                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({filename:msg.filename,msg:msg.message,stack:stack}) + '<br>&nbsp;</div>'
-            } else if(msg instanceof PromiseRejectionEvent) {
+                let stack = msg.error.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;')
+                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ filename: msg.filename, msg: msg.message, stack: stack }) + '<br>&nbsp;</div>'
+            } else if (msg instanceof PromiseRejectionEvent) {
                 objcount = 0;
-                let stack = msg.reason.stack.replace(/\sat\s/g,'<br>&nbsp;&nbsp;at&nbsp;&nbsp;')          
-                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({msg:msg.reason.message,stack:stack}) + '<br>&nbsp;</div>'
-            } else if(msg instanceof Error) {
+                let stack = msg.reason.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;')
+                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ msg: msg.reason.message, stack: stack }) + '<br>&nbsp;</div>'
+            } else if (msg instanceof Error) {
                 objcount = 0;
-                let stack = msg.stack.replace(/\sat\s/g,'<br>&nbsp;&nbsp;at&nbsp;&nbsp;')           
-                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({filename:msg.filename,msg:msg.message,stack:stack}) + '<br>&nbsp;</div>'
+                let stack = msg.stack.replace(/\sat\s/g, '<br>&nbsp;&nbsp;at&nbsp;&nbsp;')
+                return '<h5 style="color:red">▶Error</h5><div class="c_e_obj" style="display:none">' + this[getObjStr]({ filename: msg.filename, msg: msg.message, stack: stack }) + '<br>&nbsp;</div>'
             } else if (msg instanceof Event) {
                 this[renderEvent](msg);
             } else if (Object.prototype.toString.call(msg) === '[object Object]') {
@@ -422,18 +514,18 @@ export default (() => {
             } else if (Object.prototype.toString.call(msg) === '[object Array]') {
                 objcount = 0;
                 return `<h5>▶Array</h5><div class="c_p_obj" style="display:none">[<br> ${this[getObjStr](msg)} <br>]&nbsp;</div>`
-            }else {
-                if(typeof msg === 'undefined'|| msg === null) {
+            } else {
+                if (typeof msg === 'undefined' || msg === null) {
                     return `<i style="color:#909090">${JSON.stringify(msg)}</i>`
                 }
                 msg = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                msg = msg&&msg.replace(/%c.+?%c/g, '');
+                msg = msg && msg.replace(/%c.+?%c/g, '');
                 return msg
             }
         }
         [getObjStr](obj, flag) {
             let res = [];
-            let space = this[getSpaceStr](flag ? objcount * 4 + 2: 2);
+            let space = this[getSpaceStr](flag ? objcount * 4 + 2 : 2);
             objcount++;
             for (let item in obj) {
                 let str = `${space}<b>${item}:</b>&nbsp;`;
@@ -459,7 +551,7 @@ export default (() => {
             return str.join('')
         }
 
-        [appendRenderStrToBody](ele,html, isObj) {
+        [appendRenderStrToBody](ele, html, isObj) {
             let div = document.createElement('div');
             if (isObj) {
                 div.setAttribute('data-obj', '1')
@@ -475,7 +567,7 @@ export default (() => {
                 res.push(str)
             }
             res.push('}')
-            this[appendRenderStrToBody](this.content,'<h5>▶Object</h5><div class="c_p_obj" style="display:none">' + res.join('<br>') + '</div>', true)
+            this[appendRenderStrToBody](this.content, '<h5>▶Object</h5><div class="c_p_obj" style="display:none">' + res.join('<br>') + '</div>', true)
         }
     }
     if (!instance) {
